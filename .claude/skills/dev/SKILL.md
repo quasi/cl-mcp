@@ -158,5 +158,4 @@ Dependency: `opsis/conditions` (from `../opsis/`).
 ## References
 
 - [Integration Skill](../integration/SKILL.md) — for consumers using cl-mcp
-- [AGENT.md](../../../AGENT.md) — contributing guidelines (legacy, absorbed here)
 - [README.md](../../../README.md) — project navigation
