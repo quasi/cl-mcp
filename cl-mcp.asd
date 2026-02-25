@@ -33,4 +33,5 @@
                  (:file "tools-tests")
                  (:file "server-tests"))))
   :perform (asdf:test-op (o c)
-             (uiop:symbol-call :fiveam :run! :cl-mcp-tests)))
+             (uiop:symbol-call :fiveam :run!
+                                (find-symbol "CL-MCP-TESTS" :cl-mcp-tests))))
