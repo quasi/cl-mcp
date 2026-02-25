@@ -29,7 +29,6 @@ sbcl --load cl-mcp.asd --eval "(ql:quickload :cl-mcp)"
 |----------|----------|---------|
 | [.claude/skills/integration/SKILL.md](.claude/skills/integration/SKILL.md) | Consumers | Using cl-mcp in a project |
 | [.claude/skills/dev/SKILL.md](.claude/skills/dev/SKILL.md) | Contributors | Working on cl-mcp |
-| [AGENT.md](AGENT.md) | Agents (legacy) | Contributing guidelines |
 
 ## Running Tests
 
