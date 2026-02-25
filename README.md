@@ -6,6 +6,8 @@ Consumers create a server, register tools, and call `run-server`. The framework 
 
 **Protocol**: MCP 2025-06-18 | **Language**: Common Lisp (SBCL) | **License**: MIT
 
+*Ships with dev OR integration SKILLS for your agent.*
+
 ## Quick Start
 
 ```bash
@@ -36,3 +38,7 @@ sbcl --load cl-mcp.asd \
      --eval "(ql:quickload :cl-mcp/tests)" \
      --eval "(asdf:test-system :cl-mcp)"
 ```
+
+## Authors
+
+Abhjit Rao / quasi / quasiLabs
