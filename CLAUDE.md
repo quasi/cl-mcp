@@ -1,21 +1,10 @@
-# CLAUDE.md
+# cl-mcp
 
-Instructions for Claude Code when working with this repository.
+## For developers working on this library
+Invoke the dev skill: `.claude/skills/dev/SKILL.md`
 
-**See [AGENT.md](AGENT.md) for full contributing guidelines.**
-
-## Quick Reference
-
-```bash
-# Load the system
-sbcl --load cl-mcp.asd --eval "(ql:quickload :cl-mcp)"
-
-# Run tests
-sbcl --load cl-mcp.asd \
-     --eval "(ql:quickload :cl-mcp/tests)" \
-     --eval "(asdf:test-system :cl-mcp)"
-```
+## For agents using this library as a dependency
+Invoke the integration skill: `.claude/skills/integration/SKILL.md`
 
 ## Dependencies
-
 @../opsis/claude.md
