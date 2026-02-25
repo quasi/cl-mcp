@@ -19,6 +19,7 @@
 (defun register-tool (registry name description input-schema handler)
   "Register a tool in REGISTRY.
 HANDLER is a function of (arguments) returning a string or content-block list."
+  (check-type handler function)
   (setf (gethash name registry)
         (make-tool-definition
          :name name
@@ -68,12 +69,13 @@ A content block is an alist with at least a \"type\" key."
   "Normalize a handler result to MCP content format.
 If RESULT is a string, wrap in a single text content block.
 If RESULT is a list of content blocks, use as-is."
-  (if (stringp result)
-      `((("type" . "text") ("text" . ,result)))
-      (if (content-block-list-p result)
-          result
-          ;; Fallback: coerce to string
-          `((("type" . "text") ("text" . ,(princ-to-string result)))))))
+  (cond
+    ((stringp result)
+     `((("type" . "text") ("text" . ,result))))
+    ((content-block-list-p result)
+     result)
+    (t
+     `((("type" . "text") ("text" . ,(princ-to-string result)))))))
 
 ;;; Tool Calling
 

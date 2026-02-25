@@ -45,25 +45,15 @@ HANDLER is (lambda (arguments) ...) returning a string or content-block list."
                            (mcp-server-tools server))))))
 
 (defun %handle-tools-call (server id params)
-  "Handle the tools/call request."
+  "Handle the tools/call request.
+Signals from call-tool (method-not-found, invalid-params) propagate to %handle-request."
   (let ((name (cdr (assoc "name" params :test #'string=)))
         (arguments (cdr (assoc "arguments" params :test #'string=))))
-    (handler-case
-        (let ((content (cl-mcp.tools:call-tool
-                        (mcp-server-tools server) name arguments)))
-          (make-success-response
-           :id id
-           :result `(("content" . ,content))))
-      (method-not-found (c)
-        (make-error-response
-         :id id
-         :code (error-code c)
-         :message (error-message c)))
-      (invalid-params (c)
-        (make-error-response
-         :id id
-         :code (error-code c)
-         :message (error-message c))))))
+    (let ((content (cl-mcp.tools:call-tool
+                    (mcp-server-tools server) name arguments)))
+      (make-success-response
+       :id id
+       :result `(("content" . ,content))))))
 
 ;;; Request Dispatcher
 
@@ -99,7 +89,8 @@ HANDLER is (lambda (arguments) ...) returning a string or content-block list."
       (error (c)
         (opsis/c:emit :request-failed :source source :level :error
                       :message (princ-to-string c)
-                      :data (list :method method))
+                      :data (list :method method
+                                  :condition-type (type-of c)))
         (make-error-response
          :id id
          :code -32603
@@ -137,7 +128,8 @@ Emits opsis events at protocol lifecycle points."
            output))
         (error (c)
           (opsis/c:emit :request-failed :source source :level :error
-                        :message (princ-to-string c))
+                        :message (princ-to-string c)
+                        :data (list :condition-type (type-of c)))
           (write-message
            (make-error-response
             :id nil
