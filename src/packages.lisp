@@ -88,6 +88,7 @@
    #:mcp-server-name
    #:mcp-server-version
    #:mcp-server-protocol-version
+   #:mcp-server-tools
    ;; Public API
    #:register-tool
    #:run-server
