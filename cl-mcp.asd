@@ -24,15 +24,14 @@
   :author "Abhijit Rao <quasi@quasilabs.com>"
   :license "MIT"
   :version "0.1.0"
-  :serial t
   :depends-on (#:cl-mcp
                #:bordeaux-threads)
   :components ((:module "src/client"
                 :components
                 ((:file "packages")
-                 (:file "conditions")
-                 (:file "protocol")
-                 (:file "client"))))
+                 (:file "conditions" :depends-on ("packages"))
+                 (:file "protocol"   :depends-on ("packages" "conditions"))
+                 (:file "client"     :depends-on ("packages" "conditions" "protocol")))))
   :in-order-to ((asdf:test-op (asdf:test-op #:cl-mcp/client-tests))))
 
 (asdf:defsystem #:cl-mcp/client-tests
@@ -42,9 +41,9 @@
   :components ((:module "tests/client"
                 :components
                 ((:file "packages")
-                 (:file "conditions-tests")
-                 (:file "protocol-tests")
-                 (:file "client-tests"))))
+                 (:file "conditions-tests" :depends-on ("packages"))
+                 (:file "protocol-tests"   :depends-on ("packages"))
+                 (:file "client-tests"     :depends-on ("packages")))))
   :perform (asdf:test-op (o c)
              (uiop:symbol-call :fiveam :run!
                                (find-symbol "CL-MCP-CLIENT-TESTS"

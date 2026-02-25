@@ -80,24 +80,30 @@
     (force-output (client-stdin client))))
 
 (defun %dispatch-response (client response)
-  "Route a response to the waiting caller. Called from reader thread."
-  (let ((id (response-id response)))
-    (bt:with-lock-held ((client-pending-lock client))
-      (let ((promise (gethash id (client-pending client))))
-        (when promise
-          (fulfill-promise promise response))))))
+  "Route a response to the waiting caller. Called from reader thread.
+   Extracts the promise under pending-lock, then fulfills it outside
+   the lock to avoid lock-ordering inversion with await-promise."
+  (let* ((id      (response-id response))
+         (promise (bt:with-lock-held ((client-pending-lock client))
+                    (gethash id (client-pending client)))))
+    (when promise
+      (fulfill-promise promise response))))
 
 (defun %abort-all-pending (client message)
-  "Fulfill all pending requests with a session-closed error. Called on EOF."
-  (bt:with-lock-held ((client-pending-lock client))
-    (maphash (lambda (id promise)
-               (declare (ignore id))
-               (fulfill-promise
-                promise
-                (make-error-response
-                 :id nil :code -32603 :message message)))
-             (client-pending client))
-    (clrhash (client-pending client))))
+  "Fulfill all pending requests with a session-closed error. Called on EOF.
+   Collects promises under pending-lock, clears the table, then fulfills
+   outside the lock to avoid lock-ordering inversion with await-promise."
+  (let (promises)
+    (bt:with-lock-held ((client-pending-lock client))
+      (maphash (lambda (id promise)
+                 (declare (ignore id))
+                 (push promise promises))
+               (client-pending client))
+      (clrhash (client-pending client)))
+    (let ((error-response (make-error-response
+                           :id nil :code -32603 :message message)))
+      (dolist (promise promises)
+        (fulfill-promise promise error-response)))))
 
 (defun %reader-loop (client)
   "Read server stdout in a loop, dispatching responses and ignoring notifications.
@@ -106,12 +112,14 @@
       (loop
         (let ((line (read-line (client-stdout client) nil nil)))
           (unless line
-            ;; EOF: server exited
-            (setf (client-connected-p client) nil)
+            ;; EOF: server exited — protect connected-p write under pending-lock
+            (bt:with-lock-held ((client-pending-lock client))
+              (setf (client-connected-p client) nil))
             (%abort-all-pending client "MCP session closed: server exited (EOF)")
             (return))
           (let ((trimmed (string-trim '(#\Space #\Tab #\Return) line)))
-            (unless (zerop (length trimmed))
+            (when (plusp (length trimmed))
+              ;; Narrow to expected parse failures; let programming errors propagate
               (handler-case
                   (let ((msg (parse-client-message trimmed)))
                     (typecase msg
@@ -120,12 +128,12 @@
                       (json-rpc-request
                        ;; Server notification — ignore for now
                        nil)))
-                (error ()
-                  ;; Malformed message — skip and continue
-                  nil))))))
+                (parse-error () nil)
+                (invalid-request () nil))))))
     (error ()
       ;; Unexpected error in reader thread — mark disconnected
-      (setf (client-connected-p client) nil)
+      (bt:with-lock-held ((client-pending-lock client))
+        (setf (client-connected-p client) nil))
       (%abort-all-pending client "MCP session closed: reader thread error"))))
 
 ;;; ──────────────────────────────────────────────────────────────────────────
@@ -152,7 +160,8 @@
                :name "mcp-reader"
                :initial-bindings nil))
         (%do-handshake client)
-        (setf (client-connected-p client) t)
+        (bt:with-lock-held ((client-pending-lock client))
+          (setf (client-connected-p client) t))
         client)
     (mcp-session-closed (c)
       ;; Handshake timed out — clean up and re-signal as connect error
@@ -168,37 +177,40 @@
 
 (defun %do-handshake (client)
   "Send initialize, store capabilities, send notifications/initialized."
-  (let* ((response (%send-request
-                    client "initialize"
-                    `(("protocolVersion" . "2025-11-25")
-                      ("capabilities"   . ,(make-hash-table :test #'equal))
-                      ("clientInfo"     . (("name"    . ,(client-name client))
-                                           ("version" . ,(client-version client)))))))
-         (result (response-result response)))
+  (let ((response (%send-request
+                   client "initialize"
+                   `(("protocolVersion" . "2025-11-25")
+                     ("capabilities"   . ,(make-hash-table :test #'equal))
+                     ("clientInfo"     . (("name"    . ,(client-name client))
+                                          ("version" . ,(client-version client))))))))
+    ;; Check for error before touching result — error response has nil result
     (when (response-error response)
       (error 'mcp-session-closed
              :message (format nil "initialize rejected: ~a"
                                (getf (response-error response) :message))))
-    (setf (client-server-info client)
-          (cdr (assoc "serverInfo" result :test #'string=)))
-    (setf (client-server-capabilities client)
-          (cdr (assoc "capabilities" result :test #'string=))))
+    (let ((result (response-result response)))
+      (setf (client-server-info client)
+            (cdr (assoc "serverInfo" result :test #'string=)))
+      (setf (client-server-capabilities client)
+            (cdr (assoc "capabilities" result :test #'string=)))))
   (%send-notification client "notifications/initialized" nil))
 
 (defun disconnect (client &key (timeout 5))
   "Shut down the MCP session cleanly.
    Closes server stdin, waits for the reader thread to exit, kills if needed."
-  (setf (client-connected-p client) nil)
+  (bt:with-lock-held ((client-pending-lock client))
+    (setf (client-connected-p client) nil))
   ;; Close stdin → server sees EOF and exits
   (when (client-stdin client)
     (ignore-errors (close (client-stdin client)))
     (setf (client-stdin client) nil))
-  ;; Wait for reader thread
+  ;; Wait for reader thread; bt:join-thread has no :timeout in bt1 API,
+  ;; so wrap with bt:with-timeout which signals bt:timeout on expiry.
   (when (client-reader-thread client)
     (handler-case
-        (bt:join-thread (client-reader-thread client)
-                        :timeout timeout)
-      (error ()
+        (bt:with-timeout (timeout)
+          (bt:join-thread (client-reader-thread client)))
+      (bt:timeout ()
         (ignore-errors
           (bt:destroy-thread (client-reader-thread client)))))
     (setf (client-reader-thread client) nil))
@@ -250,8 +262,9 @@
          (response (%send-request client "tools/call" params))
          (err      (response-error response)))
     ;; Protocol-level error (method not found, invalid params, etc.)
+    ;; Session is still alive — use mcp-protocol-error, not mcp-session-closed
     (when err
-      (error 'mcp-session-closed
+      (error 'mcp-protocol-error
              :message (format nil "tools/call failed: ~a"
                                (getf err :message))))
     (let* ((result   (response-result response))
@@ -281,9 +294,12 @@
 (defmacro with-mcp-client ((var &rest make-args) &body body)
   "Connect an MCP client for the duration of BODY, disconnect on exit.
    VAR is bound to the connected client.
-   MAKE-ARGS are passed to make-client (keyword args: :name :version :command)."
-  `(let ((,var (make-client ,@make-args)))
-     (connect ,var)
+   MAKE-ARGS are passed to make-client (keyword args: :name :version :command).
+   disconnect is called even if connect signals — safe because disconnect
+   guards every slot with (when ...)."
+  `(let ((,var (cl-mcp.client:make-client ,@make-args)))
      (unwind-protect
-         (progn ,@body)
-       (disconnect ,var))))
+         (progn
+           (cl-mcp.client:connect ,var)
+           ,@body)
+       (cl-mcp.client:disconnect ,var))))

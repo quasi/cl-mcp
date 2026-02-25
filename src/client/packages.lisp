@@ -8,6 +8,7 @@
    ;; Condition types
    #:mcp-connect-error
    #:mcp-session-closed
+   #:mcp-protocol-error
    #:mcp-tool-error
    ;; Accessors
    #:connect-error-command

@@ -10,8 +10,7 @@
                      (error-message c)
                      (connect-error-command c))))
   (:documentation
-   "Signaled when a connection to an MCP server cannot be established.
-    Restarts established by callers: retry-connect, abort-connect."))
+   "Signaled when a connection to an MCP server cannot be established."))
 
 (define-condition mcp-session-closed (mcp-error)
   ()
@@ -19,8 +18,16 @@
              (format s "MCP session closed: ~a" (error-message c))))
   (:documentation
    "Signaled when an MCP session drops unexpectedly (subprocess exited,
-    timeout, or EOF before expected).
-    Restarts established by callers: reconnect, signal-to-caller."))
+    timeout, or EOF before expected)."))
+
+(define-condition mcp-protocol-error (mcp-error)
+  ()
+  (:report (lambda (c s)
+             (format s "MCP protocol error: ~a" (error-message c))))
+  (:documentation
+   "Signaled when the server returns a JSON-RPC error response for a valid
+    session operation (e.g. method not found, invalid params).
+    Unlike mcp-session-closed, the session is still alive after this error."))
 
 (define-condition mcp-tool-error (mcp-error)
   ((tool-name :initarg :tool-name :reader tool-error-name)
