@@ -339,6 +339,42 @@ Accessors: `error-code`, `error-message`, `error-data`.
 
 All inherit from `mcp-error` (from `cl-mcp.conditions`). Accessor `error-message` available on all.
 
+---
+
+## GHOST.MCP — Higher-Level Bridge
+
+If you are using cl-mcp inside a **Ghost agent**, prefer the `ghost/mcp` bridge over calling `cl-mcp.client` directly. It converts MCP tools into native Ghost `tool-definition` objects automatically.
+
+```lisp
+(ql:quickload :ghost/mcp)
+
+;; Convenience macro — wraps session, builds environment, disconnects on exit
+(ghost.mcp:with-mcp-environment (env
+    :command '("npx" "@modelcontextprotocol/server-filesystem" "/tmp"))
+  (ghost:make-agent :provider provider :model model :environment env))
+```
+
+Lower-level: if you already hold a connected client, call `mcp-tools-from` directly:
+
+```lisp
+(cl-mcp.client:with-mcp-client (client :command '("my-server"))
+  (let ((tools (ghost.mcp:mcp-tools-from client :safety-level :safe)))
+    ;; tools is a list of cl-llm-provider:tool-definition
+    (ghost.environment:make-environment :tools tools)))
+```
+
+Error mapping:
+
+| cl-mcp condition | ghost.mcp behavior |
+|-----------------|-------------------|
+| `mcp-tool-error` (`isError: true`) | Handler returns LLM-visible string; session stays alive |
+| `mcp-session-closed` | Propagated — Ghost agent loop signals `agent-tool-error` |
+| `mcp-protocol-error` | Propagated — Ghost agent loop signals `agent-tool-error` |
+
+Package: `ghost.mcp`. ASDF system: `ghost/mcp` (separate from `:ghost`).
+
+---
+
 ## References
 
 - [Dev Skill](../dev/SKILL.md) — for contributors working on cl-mcp
