@@ -1,8 +1,9 @@
 # cl-mcp
 
-MCP server **and** client framework for Common Lisp.
+MCP **server** *and* **client** framework for Common Lisp.
 
 **Server**: expose any CL function as an MCP tool — `make-server` → `register-tool` → `run-server`.
+
 **Client**: connect to any MCP server subprocess, list tools, call tools — `make-client` → `connect` → `list-tools` / `call-tool`.
 
 Framework handles JSON-RPC 2.0 framing, NDJSON stdio transport, MCP protocol negotiation, tool validation, threading, and error recovery. Consumer code is pure business logic.
